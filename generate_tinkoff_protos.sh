@@ -15,7 +15,7 @@ protoc $PROTOC_OPTS ./apis/tinkoff/cloud/stt/v1/*.proto
 protoc $PROTOC_OPTS ./apis/tinkoff/cloud/tts/v1/*.proto
 protoc $PROTOC_OPTS ./apis/tinkoff/cloud/longrunning/v1/*.proto
 
-rm -rf pkg/tinkoff
+rm -rf pkg/tinkoff_voicekit
 
 mv temp/github.com/kanataidarov/tinkoff_voicekit/pkg/* pkg
 

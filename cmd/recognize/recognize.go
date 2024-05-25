@@ -8,7 +8,7 @@ import (
 
 	"github.com/kanataidarov/tinkoff_voicekit/pkg/args"
 	"github.com/kanataidarov/tinkoff_voicekit/pkg/common"
-	sttPb "github.com/kanataidarov/tinkoff_voicekit/pkg/tinkoff/cloud/stt/v1"
+	sttPb "github.com/kanataidarov/tinkoff_voicekit/pkg/tinkoff_voicekit/cloud/stt/v1"
 )
 
 func main() {

@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package tinkoff.cloud.stt.v1;
-option go_package = "github.com/kanataidarov/tinkoff_voicekit/pkg/tinkoff/cloud/stt/v1";
+option go_package = "github.com/kanataidarov/tinkoff_voicekit/pkg/tinkoff_voicekit/cloud/stt/v1";
 option objc_class_prefix = 'TVKSR';
 
 import "google/protobuf/duration.proto";

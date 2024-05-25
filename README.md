@@ -81,8 +81,8 @@ Return just the first recognized utterance and halt (you will probably need long
 ## Generate Protobuf and gRPC definitions (optional)
 
 In case of API changes (`*.proto` files in `apis` directory),
-you may regenerate Protobuf and gRPC definitions by simply running the following script:
+you may regenerate Protobuf and gRPC definitions by running the following script:
 
 ```
-./sh/generate_protobuf.sh
+./sh/generate_tinkoff_protos.sh
 ```

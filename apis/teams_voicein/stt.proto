@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package teams_voicein;
+option go_package = "github.com/kanataidarov/tinkoff_voicekit/pkg/teams_voicein";
+
+service SpeechToText {
+  rpc SayHello(HwRequest) returns (HwResponse) {}
+}
+
+message HwRequest {}
+
+message HwResponse {
+  string message = 1;
+}
