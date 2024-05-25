@@ -48,3 +48,5 @@ csharp/*.wav
 
 ## User-specific dev runtime environment variables
 .env
+
+config/local.yml
