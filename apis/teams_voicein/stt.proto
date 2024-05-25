@@ -4,11 +4,19 @@ package teams_voicein;
 option go_package = "github.com/kanataidarov/tinkoff_voicekit/pkg/teams_voicein";
 
 service SpeechToText {
-  rpc SayHello(HwRequest) returns (HwResponse) {}
+  rpc Recognize(SttRequest) returns (SttResponse) {}
 }
 
-message HwRequest {}
+message SttRequest {
+  FileHeader header = 1;
+  bytes data = 2;
+}
 
-message HwResponse {
+message FileHeader {
+  string name = 1;
+  optional int64 size = 2;
+}
+
+message SttResponse {
   string message = 1;
 }

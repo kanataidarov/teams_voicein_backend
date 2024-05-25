@@ -19,14 +19,14 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	SpeechToText_SayHello_FullMethodName = "/teams_voicein.SpeechToText/SayHello"
+	SpeechToText_Recognize_FullMethodName = "/teams_voicein.SpeechToText/Recognize"
 )
 
 // SpeechToTextClient is the client API for SpeechToText service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type SpeechToTextClient interface {
-	SayHello(ctx context.Context, in *HwRequest, opts ...grpc.CallOption) (*HwResponse, error)
+	Recognize(ctx context.Context, in *SttRequest, opts ...grpc.CallOption) (*SttResponse, error)
 }
 
 type speechToTextClient struct {
@@ -37,9 +37,9 @@ func NewSpeechToTextClient(cc grpc.ClientConnInterface) SpeechToTextClient {
 	return &speechToTextClient{cc}
 }
 
-func (c *speechToTextClient) SayHello(ctx context.Context, in *HwRequest, opts ...grpc.CallOption) (*HwResponse, error) {
-	out := new(HwResponse)
-	err := c.cc.Invoke(ctx, SpeechToText_SayHello_FullMethodName, in, out, opts...)
+func (c *speechToTextClient) Recognize(ctx context.Context, in *SttRequest, opts ...grpc.CallOption) (*SttResponse, error) {
+	out := new(SttResponse)
+	err := c.cc.Invoke(ctx, SpeechToText_Recognize_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func (c *speechToTextClient) SayHello(ctx context.Context, in *HwRequest, opts .
 // All implementations must embed UnimplementedSpeechToTextServer
 // for forward compatibility
 type SpeechToTextServer interface {
-	SayHello(context.Context, *HwRequest) (*HwResponse, error)
+	Recognize(context.Context, *SttRequest) (*SttResponse, error)
 	mustEmbedUnimplementedSpeechToTextServer()
 }
 
@@ -58,8 +58,8 @@ type SpeechToTextServer interface {
 type UnimplementedSpeechToTextServer struct {
 }
 
-func (UnimplementedSpeechToTextServer) SayHello(context.Context, *HwRequest) (*HwResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SayHello not implemented")
+func (UnimplementedSpeechToTextServer) Recognize(context.Context, *SttRequest) (*SttResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Recognize not implemented")
 }
 func (UnimplementedSpeechToTextServer) mustEmbedUnimplementedSpeechToTextServer() {}
 
@@ -74,20 +74,20 @@ func RegisterSpeechToTextServer(s grpc.ServiceRegistrar, srv SpeechToTextServer)
 	s.RegisterService(&SpeechToText_ServiceDesc, srv)
 }
 
-func _SpeechToText_SayHello_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HwRequest)
+func _SpeechToText_Recognize_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SttRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SpeechToTextServer).SayHello(ctx, in)
+		return srv.(SpeechToTextServer).Recognize(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SpeechToText_SayHello_FullMethodName,
+		FullMethod: SpeechToText_Recognize_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SpeechToTextServer).SayHello(ctx, req.(*HwRequest))
+		return srv.(SpeechToTextServer).Recognize(ctx, req.(*SttRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -100,8 +100,8 @@ var SpeechToText_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*SpeechToTextServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "SayHello",
-			Handler:    _SpeechToText_SayHello_Handler,
+			MethodName: "Recognize",
+			Handler:    _SpeechToText_Recognize_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

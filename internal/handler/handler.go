@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/kanataidarov/tinkoff_voicekit/internal/config"
 	pb "github.com/kanataidarov/tinkoff_voicekit/pkg/teams_voicein"
 	"google.golang.org/grpc"
+	"log"
 	"log/slog"
 	"net"
 )
@@ -14,8 +16,24 @@ type server struct {
 	pb.UnimplementedSpeechToTextServer
 }
 
-func (s *server) SayHello(ctx context.Context, in *pb.HwRequest) (*pb.HwResponse, error) {
-	return &pb.HwResponse{Message: "H, W!"}, nil
+func (s *server) Recognize(ctx context.Context, req *pb.SttRequest) (*pb.SttResponse, error) {
+	var (
+		header *pb.FileHeader
+		buf    bytes.Buffer
+	)
+
+	header = req.Header
+	log.Printf("File name: %v", header.Name)
+	if header.Size != nil {
+		log.Printf("File size should be: %v", header.Size)
+	}
+	if data := req.Data; data != nil {
+		buf.Write(data)
+	}
+
+	log.Printf("Total bytes received: %v", buf.Len())
+
+	return &pb.SttResponse{Message: fmt.Sprintf("Received %v bytes. Thanks!", buf.Len())}, nil
 }
 
 func Serve(cfg *config.Config, log *slog.Logger) {
