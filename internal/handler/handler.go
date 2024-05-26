@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"github.com/kanataidarov/tinkoff_voicekit/internal/config"
+	"github.com/kanataidarov/tinkoff_voicekit/internal/msgraph_client"
 	"github.com/kanataidarov/tinkoff_voicekit/pkg/args"
 	"github.com/kanataidarov/tinkoff_voicekit/pkg/common"
+	"github.com/kanataidarov/tinkoff_voicekit/pkg/model/rest/msgraph_api"
 	pb "github.com/kanataidarov/tinkoff_voicekit/pkg/teams_voicein"
 	sttPb "github.com/kanataidarov/tinkoff_voicekit/pkg/tinkoff_voicekit/cloud/stt/v1"
 	"google.golang.org/grpc"
@@ -17,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type server struct {
@@ -42,6 +45,8 @@ func (s *server) Recognize(_ context.Context, req *pb.SttRequest) (*pb.SttRespon
 	log.Printf("Total bytes received: %v", buf.Len())
 
 	res := doRecognize(buf, fileName)
+
+	doTeams(res)
 
 	return &pb.SttResponse{Message: res}, nil
 }
@@ -153,4 +158,35 @@ func Serve(cfg *config.Config, log *slog.Logger) {
 	if err := srv.Serve(lis); err != nil {
 		log.Error(fmt.Sprintf("Failed to serve at %d. %v", port, err))
 	}
+}
+
+func Context() context.Context {
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+	return ctx
+}
+
+func doTeams(msgContent string) {
+	userId := "a2619b8a-6136-43df-9910-692af6264c0b"
+
+	chats, err := msgraph_client.Get[msgraph_api.ChatsResponse](Context(), msgraph_client.ChatsUrl())
+	if err != nil {
+		log.Printf("Error getting chats: %v", err)
+	}
+
+	chat := msgraph_api.Chat{}
+	chatItems := chats.Value
+	for _, chatItem := range chatItems {
+		if chatItem.LastMsg.LastMsgFrom.User.Id == userId {
+			log.Printf("Last Msg Id: " + chatItem.LastMsg.Id)
+			chat = chatItem
+			break
+		}
+	}
+
+	msgRequest := msgraph_api.MsgRequest{MsgBody: msgraph_api.MsgBody{Content: msgContent, ContentType: "text"}}
+	msgResponse, err := msgraph_client.Post[msgraph_api.MsgResponse](Context(), msgraph_client.PostMsgUrl(chat.Id), msgRequest)
+	if err != nil {
+		log.Printf("Error posting msg: %v", err)
+	}
+	log.Printf("Msg response: %+v", msgResponse)
 }

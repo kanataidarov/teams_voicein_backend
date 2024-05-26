@@ -50,3 +50,4 @@ csharp/*.wav
 .env
 
 config/local.yml
+cmd/debug

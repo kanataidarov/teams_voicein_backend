@@ -1,6 +1,6 @@
 # Teams Voice Input
 
-Backend of the Teams Voice Input project. \
+Backend of the Teams Voice Input project. 
 
 ## Usage
 
