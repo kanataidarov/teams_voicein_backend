@@ -5,75 +5,80 @@ import (
 	"context"
 	"fmt"
 	"github.com/kanataidarov/tinkoff_voicekit/internal/config"
-	"github.com/kanataidarov/tinkoff_voicekit/internal/msgraph_client"
-	"github.com/kanataidarov/tinkoff_voicekit/pkg/args"
+	mc "github.com/kanataidarov/tinkoff_voicekit/internal/msgraph_client"
 	"github.com/kanataidarov/tinkoff_voicekit/pkg/common"
-	"github.com/kanataidarov/tinkoff_voicekit/pkg/model/rest/msgraph_api"
-	pb "github.com/kanataidarov/tinkoff_voicekit/pkg/teams_voicein"
-	sttPb "github.com/kanataidarov/tinkoff_voicekit/pkg/tinkoff_voicekit/cloud/stt/v1"
+	mapi "github.com/kanataidarov/tinkoff_voicekit/pkg/model/rest/msgraph_api"
+	our "github.com/kanataidarov/tinkoff_voicekit/pkg/teams_voicein"
+	tkof "github.com/kanataidarov/tinkoff_voicekit/pkg/tinkoff_voicekit/cloud/stt/v1"
+	"github.com/kanataidarov/tinkoff_voicekit/pkg/types"
 	"google.golang.org/grpc"
 	"io"
-	"log"
 	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 type server struct {
-	pb.UnimplementedSpeechToTextServer
+	our.UnimplementedSpeechToTextServer
 }
 
-func (s *server) Recognize(_ context.Context, req *pb.SttRequest) (*pb.SttResponse, error) {
+func (s *server) Recognize(ctx context.Context, req *our.SttRequest) (*our.SttResponse, error) {
+	cfg := config.Load()
+	logger := config.InitLogger(cfg.Env)
+	ctx = context.WithValue(ctx, "values", types.CtxVals{Config: cfg, Logger: logger})
+
 	var (
-		header *pb.FileHeader
+		header *our.FileHeader
 		buf    bytes.Buffer
 	)
 
 	header = req.Header
 	fileName := filepath.Base(header.Name)
-	log.Printf("File name: %v", fileName)
+	logger.Info("", "File name", fileName)
 	if header.Size != nil {
-		log.Printf("File size should be: %d", header.Size)
+		logger.Debug("File size should be: ", "", header.Size)
 	}
 	if data := req.Data; data != nil {
 		buf.Write(data)
 	}
+	logger.Debug("Total bytes received: ", "", buf.Len())
 
-	log.Printf("Total bytes received: %v", buf.Len())
+	res := doRecognize(ctx, buf, fileName)
 
-	res := doRecognize(buf, fileName)
+	doTeams(ctx, res)
 
-	doTeams(res)
-
-	return &pb.SttResponse{Message: res}, nil
+	return &our.SttResponse{Message: res}, nil
 }
 
-func doRecognize(buf bytes.Buffer, fileName string) string {
-	prepareFile(buf, fileName)
+func doRecognize(ctx context.Context, buf bytes.Buffer, fileName string) string {
+	ctxVals := ctx.Value("values").(types.CtxVals)
+	cfg := ctxVals.Config
+	logger := ctxVals.Logger
 
-	opts := args.ParseRecognizeOptions()
-	if opts == nil {
-		os.Exit(1)
+	prepareFile(ctx, buf, fileName)
+
+	file, err := os.Open(fileName)
+	if err != nil {
+		logger.Error("Error opening file", "Error", err)
 	}
-	defer func(InputFile *os.File) {
-		_ = InputFile.Close()
-	}(opts.InputFile)
+	defer func(file *os.File) {
+		_ = file.Close()
+	}(file)
 
 	var dataReader io.Reader
-	if strings.HasSuffix(opts.InputFile.Name(), ".wav") {
-		reader, err := common.OpenWavFormat(opts.InputFile, "LINEAR16", 1, 16000)
+	if strings.HasSuffix(file.Name(), ".wav") {
+		reader, err := common.OpenWavFormat(file, cfg.Audio.Encoding, cfg.Audio.Chans, cfg.Audio.SampleRate)
 		if err != nil {
 			panic(err)
 		}
 		dataReader = reader
 	} else {
-		dataReader = opts.InputFile
+		dataReader = file
 	}
 
-	client, err := common.NewSttClient(opts.CommonOptions)
+	client, err := common.NewSttClient(cfg)
 	if err != nil {
 		panic(err)
 	}
@@ -86,34 +91,34 @@ func doRecognize(buf bytes.Buffer, fileName string) string {
 		panic(err)
 	}
 
-	request := &sttPb.RecognizeRequest{
-		Config: &sttPb.RecognitionConfig{
-			Encoding:                   sttPb.AudioEncoding(sttPb.AudioEncoding_value[*opts.Encoding]),
-			SampleRateHertz:            uint32(*opts.Rate),
-			LanguageCode:               *opts.LanguageCode,
-			MaxAlternatives:            uint32(*opts.MaxAlternatives),
-			ProfanityFilter:            !(*opts.DisableProfanityFilter),
-			EnableAutomaticPunctuation: !(*opts.DisableAutomaticPunctuation),
-			NumChannels:                uint32(*opts.NumChannels),
+	request := &tkof.RecognizeRequest{
+		Config: &tkof.RecognitionConfig{
+			Encoding:                   tkof.AudioEncoding(tkof.AudioEncoding_value[cfg.Audio.Encoding]),
+			SampleRateHertz:            uint32(cfg.Audio.SampleRate),
+			LanguageCode:               cfg.Audio.LanguageCode,
+			MaxAlternatives:            uint32(cfg.Audio.MaxAlternatives),
+			ProfanityFilter:            cfg.Audio.ProfanityFilter,
+			EnableAutomaticPunctuation: cfg.Audio.AutomaticPunctuation,
+			NumChannels:                uint32(cfg.Audio.Chans),
 		},
-		Audio: &sttPb.RecognitionAudio{
-			AudioSource: &sttPb.RecognitionAudio_Content{Content: contents},
+		Audio: &tkof.RecognitionAudio{
+			AudioSource: &tkof.RecognitionAudio_Content{Content: contents},
 		},
 	}
-	if *opts.DoNotPerformVad {
-		request.Config.Vad = &sttPb.RecognitionConfig_DoNotPerformVad{DoNotPerformVad: true}
+	if !cfg.Audio.PerformVad {
+		request.Config.Vad = &tkof.RecognitionConfig_DoNotPerformVad{DoNotPerformVad: true}
 	} else {
-		request.Config.Vad = &sttPb.RecognitionConfig_VadConfig{
-			VadConfig: &sttPb.VoiceActivityDetectionConfig{
-				SilenceDurationThreshold: float32(*opts.SilenceDurationThreshold),
+		request.Config.Vad = &tkof.RecognitionConfig_VadConfig{
+			VadConfig: &tkof.VoiceActivityDetectionConfig{
+				SilenceDurationThreshold: float32(cfg.Audio.SilenceDurationThreshold),
 			},
 		}
 	}
 
-	// context.WithCancel in prod
-	result, err := client.Recognize(context.Background(), request)
+	result, err := client.Recognize(ctx, request)
 	if err != nil {
-		panic(err)
+		logger.Error("Error calling Recognize", "Error", err)
+		return ""
 	}
 
 	transcript := result.Results[0].Alternatives[0].Transcript
@@ -121,72 +126,81 @@ func doRecognize(buf bytes.Buffer, fileName string) string {
 	return transcript
 }
 
-func prepareFile(buf bytes.Buffer, fileName string) *os.File {
+func prepareFile(ctx context.Context, buf bytes.Buffer, fileName string) *os.File {
+	ctxVals := ctx.Value("values").(types.CtxVals)
+	logger := ctxVals.Logger
+
 	file, err := os.Create(fileName)
 	if err != nil {
-		log.Print("Could not create file", err)
+		logger.Error("Error opening file", "Error", err)
 		return nil
 	}
 
 	length, err := file.Write(buf.Bytes())
 	if err != nil {
 		_ = file.Close()
-		log.Print("Could not write to file", err)
+		logger.Error("Could not write to file", "Error", err)
 		return nil
 	}
-	log.Printf("Wrote %d bytes to file", length)
+	logger.Info(fmt.Sprintf("Wrote %d bytes to file", length))
 
 	err = file.Close()
 	if err != nil {
-		log.Print("Could not close file", err)
+		logger.Error("Could not close file", "Error", err)
 		return nil
 	}
 
 	return file
 }
 
-func Serve(cfg *config.Config, log *slog.Logger) {
+func Serve(_ context.Context, cfg *config.Config, log *slog.Logger) error {
 	port := cfg.Grpc.Port
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		log.Error(fmt.Sprintf("Failed to listen at %d. %v", port, err))
+		slog.Error("Failed to listen at ", "Port", port, "Error", err)
+		return err
 	}
 
 	srv := grpc.NewServer()
-	pb.RegisterSpeechToTextServer(srv, &server{})
-	log.Info(fmt.Sprintf("Server listening on %v", lis.Addr()))
+	our.RegisterSpeechToTextServer(srv, &server{})
+	log.Info("Server listening on ", "Address", lis.Addr())
 	if err := srv.Serve(lis); err != nil {
-		log.Error(fmt.Sprintf("Failed to serve at %d. %v", port, err))
+		slog.Error("Failed to serve at ", "Port", port, "Error", err)
+		return err
 	}
+
+	return nil
 }
 
-func Context() context.Context {
-	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
-	return ctx
-}
+func doTeams(ctx context.Context, msgContent string) {
+	ctxVals := ctx.Value("values").(types.CtxVals)
+	logger := ctxVals.Logger
 
-func doTeams(msgContent string) {
-	userId := "a2619b8a-6136-43df-9910-692af6264c0b"
-
-	chats, err := msgraph_client.Get[msgraph_api.ChatsResponse](Context(), msgraph_client.ChatsUrl())
+	user, err := mc.Get[mapi.User](ctx, mc.ProfileUrl())
 	if err != nil {
-		log.Printf("Error getting chats: %v", err)
+		logger.Error("Error getting user profile", "Error", err)
+	}
+	userId := user.Id
+	logger.Debug("", "User id", userId)
+
+	chats, err := mc.Get[mapi.ChatsResponse](ctx, mc.ChatsUrl(userId))
+	if err != nil {
+		logger.Error("Error getting chats", "Error", err)
 	}
 
-	chat := msgraph_api.Chat{}
-	chatItems := chats.Value
-	for _, chatItem := range chatItems {
-		if chatItem.LastMsg.LastMsgFrom.User.Id == userId {
-			log.Printf("Last Msg Id: " + chatItem.LastMsg.Id)
-			chat = chatItem
+	directChat := mapi.Chat{}
+	for _, chatItem := range chats.Value {
+		if chatItem.ChatType == types.OneOnOne && chatItem.LastMsg.LastMsgFrom.User.Id == userId {
+			logger.Info("My Last Direct Msg Id: " + chatItem.LastMsg.Id)
+			directChat = chatItem
 			break
 		}
 	}
 
-	msgRequest := msgraph_api.MsgRequest{MsgBody: msgraph_api.MsgBody{Content: msgContent, ContentType: "text"}}
-	msgResponse, err := msgraph_client.Post[msgraph_api.MsgResponse](Context(), msgraph_client.PostMsgUrl(chat.Id), msgRequest)
+	msgRequest := mapi.MsgRequest{MsgBody: mapi.MsgBody{Content: msgContent, ContentType: "text"}}
+	msgResponse, err := mc.Post[mapi.MsgResponse](ctx, mc.PostMsgUrl(userId, directChat.Id), msgRequest)
 	if err != nil {
-		log.Printf("Error posting msg: %v", err)
+		logger.Error("Error posting msg", "Error", err)
 	}
-	log.Printf("Msg response: %+v", msgResponse)
+	logger.Debug("", "MsgResponse", msgResponse)
 }

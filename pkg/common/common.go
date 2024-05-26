@@ -5,15 +5,14 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"github.com/kanataidarov/tinkoff_voicekit/internal/config"
 	"io"
 	"os"
 	"strings"
 
 	"github.com/go-audio/wav"
-	"github.com/kanataidarov/tinkoff_voicekit/pkg/args"
 	"github.com/kanataidarov/tinkoff_voicekit/pkg/auth"
 	sttPb "github.com/kanataidarov/tinkoff_voicekit/pkg/tinkoff_voicekit/cloud/stt/v1"
-	ttsPb "github.com/kanataidarov/tinkoff_voicekit/pkg/tinkoff_voicekit/cloud/tts/v1"
 	"github.com/tidwall/pretty"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -22,12 +21,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func GetAuthorizationKeysFromEnv() (auth.KeyPair, error) {
-	apiKey := os.Getenv("TINKOFF_API_KEY")
-	secretKey := os.Getenv("TINKOFF_SECRET_KEY")
+func AuthorizationKeys(cfg *config.Config) (auth.KeyPair, error) {
+	apiKey := cfg.Tinkoff.ApiKey
+	secretKey := cfg.Tinkoff.SecretKey
 
 	if apiKey == "" || secretKey == "" {
-		return auth.KeyPair{}, errors.New("no TINKOFF_API_KEY or TINKOFF_SECRET_KEY in env")
+		return auth.KeyPair{}, errors.New("no TINKOFF_API_KEY or TINKOFF_SECRET_KEY in config")
 	}
 
 	return auth.KeyPair{
@@ -45,11 +44,11 @@ func isEndpointSecure(endpoint string) bool {
 	return parts[1] == "443"
 }
 
-func makeConnection(opts *args.CommonOptions, creds *auth.JwtPerRPCCredentials) (*grpc.ClientConn, error) {
-	if isEndpointSecure(*opts.Endpoint) {
+func makeConnection(cfg *config.Config, creds *auth.JwtPerRPCCredentials) (*grpc.ClientConn, error) {
+	if isEndpointSecure(cfg.Grpc.Endpoint) {
 		var rootCAs *x509.CertPool
-		if *opts.CAfile != "" {
-			pemServerCA, err := os.ReadFile(*opts.CAfile)
+		if cfg.Grpc.CAFile != "" {
+			pemServerCA, err := os.ReadFile(cfg.Grpc.CAFile)
 			if err != nil {
 				return nil, err
 			}
@@ -61,7 +60,7 @@ func makeConnection(opts *args.CommonOptions, creds *auth.JwtPerRPCCredentials) 
 		}
 
 		return grpc.Dial(
-			*opts.Endpoint,
+			cfg.Grpc.Endpoint,
 			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 				RootCAs: rootCAs,
 			})),
@@ -70,18 +69,13 @@ func makeConnection(opts *args.CommonOptions, creds *auth.JwtPerRPCCredentials) 
 	}
 
 	return grpc.Dial(
-		*opts.Endpoint,
+		cfg.Grpc.Endpoint,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 }
 
 type SpeechToTextClient interface {
 	sttPb.SpeechToTextClient
-	Close() error
-}
-
-type TextToSpeechClient interface {
-	ttsPb.TextToSpeechClient
 	Close() error
 }
 
@@ -94,32 +88,19 @@ func (client *speechToTextClient) Close() error {
 	return client.conn.Close()
 }
 
-func NewSttClient(opts *args.CommonOptions) (SpeechToTextClient, error) {
-	keyPair, err := GetAuthorizationKeysFromEnv()
+func NewSttClient(cfg *config.Config) (SpeechToTextClient, error) {
+	keyPair, err := AuthorizationKeys(cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	perRPCCredentials := auth.NewJwtPerRPCCredentials(keyPair, "test_issuer", "test_subject")
-	connection, err := makeConnection(opts, perRPCCredentials)
+	connection, err := makeConnection(cfg, perRPCCredentials)
 
 	return &speechToTextClient{
 		SpeechToTextClient: sttPb.NewSpeechToTextClient(connection),
 		conn:               connection,
 	}, err
-}
-
-func PrettyPrintProtobuf(message proto.Message) error {
-	marshaller := protojson.MarshalOptions{
-		Indent: "  ",
-	}
-	jsonMessage, err := marshaller.Marshal(message)
-	if err != nil {
-		return err
-	}
-
-	fmt.Println(string(pretty.Color(jsonMessage, pretty.TerminalStyle)))
-	return nil
 }
 
 func OpenWavFormat(file *os.File, expectedEncoding string, expectedNumChannels int, expectedRate int) (io.Reader, error) {
@@ -153,4 +134,17 @@ func OpenWavFormat(file *os.File, expectedEncoding string, expectedNumChannels i
 		return nil, fmt.Errorf("forwarding to data chunk failed")
 	}
 	return wavDecoder.PCMChunk.R, nil
+}
+
+func PrettyPrintProtobuf(message proto.Message) error {
+	marshaller := protojson.MarshalOptions{
+		Indent: "  ",
+	}
+	jsonMessage, err := marshaller.Marshal(message)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(string(pretty.Color(jsonMessage, pretty.TerminalStyle)))
+	return nil
 }

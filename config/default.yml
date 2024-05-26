@@ -1,4 +1,21 @@
+audio:
+  automatic_punctuation: true
+  encoding: LINEAR16
+  chans: 1
+  language_code: ru-RU
+  max_alternatives: 1
+  perform_vad: true
+  profanity_filter: true
+  sample_rate: 16000
+  silence_duration_threshold: 0.6
 env: "dev"
 grpc:
+  ca_file:
+  endpoint: api.tinkoff.ai:443
   port: 50051
-  timeout: 30s
+  timeout: 20s
+msgraph:
+  token:
+tinkoff:
+  api_key:
+  secret_key:
